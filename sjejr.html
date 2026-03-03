@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Огонёк</title>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0f14;
+      --card:#0f1622;
+      --stroke:#1f2a3a;
+      --text:#e8eef6;
+      --muted: rgba(232,238,246,.70);
+      --accent:#2a78ff;
+      --danger:#e5484d;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    body{ margin:0; background: var(--bg); color: var(--text); }
+    .wrap{ max-width: 560px; margin: 0 auto; padding: 14px; }
+
+    .top{
+      display:flex; align-items:center; justify-content:space-between;
+      gap: 10px; padding: 10px 12px; border:1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(42,120,255,.10), rgba(0,0,0,0));
+      border-radius: 18px;
+    }
+    .title{ display:flex; flex-direction:column; gap:2px; }
+    .title b{ font-size: 18px; }
+    .title span{ font-size: 12px; color: var(--muted); }
+
+    .pill{
+      display:flex; align-items:center; gap:8px;
+      padding: 8px 10px; border: 1px solid var(--stroke);
+      background: rgba(15,22,34,.55);
+      border-radius: 999px; font-size: 12px; color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .panel{
+      margin-top: 12px;
+      border:1px solid var(--stroke);
+      background: radial-gradient(1000px 600px at 50% -20%, rgba(255,184,0,.12), transparent 55%),
+                  radial-gradient(800px 500px at 20% 20%, rgba(255,45,95,.10), transparent 55%),
+                  var(--card);
+      border-radius: 22px;
+      padding: 14px;
+      position: relative;
+      overflow:hidden;
+    }
+
+    .meters{ display:grid; gap:10px; margin-top: 10px; }
+    .meterRow{ display:grid; gap:6px; }
+    .meterTop{ display:flex; justify-content:space-between; font-size: 12px; color: var(--muted); }
+    .meter{
+      height: 12px; background: rgba(0,0,0,.35);
+      border:1px solid var(--stroke); border-radius: 999px; overflow:hidden;
+    }
+    .bar{ height:100%; width:0%; background: linear-gradient(90deg, #ffb800, #ff5d2a, #ff2a6d); }
+    .barEnergy{ height:100%; width:0%; background: linear-gradient(90deg, #22c55e, #2a78ff); }
+    .barMood{ height:100%; width:0%; background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444); }
+
+    .fireZone{
+      margin-top: 12px;
+      display:flex; align-items:center; justify-content:center;
+      padding: 18px 0 6px;
+    }
+    .fire{
+      width: 170px; height: 170px; border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(255,232,120,.95), rgba(255,120,40,.55) 42%, rgba(255,40,90,.24) 70%, rgba(0,0,0,0) 74%);
+      filter: drop-shadow(0 0 22px rgba(255,120,40,.35));
+      transform: scale(1);
+      transition: transform .12s ease, filter .12s ease, opacity .2s ease;
+      position: relative;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .fire::after{
+      content:"";
+      position:absolute;
+      width: 105px; height: 105px; border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(255,255,255,.82), rgba(255,232,120,.58) 48%, rgba(255,120,40,.20) 72%, rgba(0,0,0,0) 76%);
+      transform: translateY(12px);
+      opacity:.88;
+    }
+    .fire.locked{ opacity: .45; filter: drop-shadow(0 0 10px rgba(148,163,184,.18)); }
+    .tapHint{ text-align:center; color: var(--muted); font-size: 12px; margin-top: 6px; min-height: 16px; }
+
+    .stats{
+      margin-top: 12px;
+      display:grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .stat{
+      border:1px solid var(--stroke);
+      background: rgba(0,0,0,.25);
+      border-radius: 18px;
+      padding: 10px 12px;
+    }
+    .stat .k{ font-size: 12px; color: var(--muted); }
+    .stat .v{ margin-top: 4px; font-size: 18px; }
+
+    .btns{
+      margin-top: 12px;
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    button{
+      border: 0;
+      border-radius: 16px;
+      padding: 12px 10px;
+      font-size: 14px;
+      color: white;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    button.secondary{ background: #223044; }
+    button:disabled{ opacity: .45; cursor:not-allowed; }
+
+    .bottom{
+      margin-top: 12px;
+      display:flex; gap:10px; flex-wrap:wrap;
+    }
+    .bottom button{ flex: 1 1 140px; }
+    .danger{ background: var(--danger); }
+
+    .note{
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    /* toast */
+    .toast{
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      background: rgba(15,22,34,.92);
+      border: 1px solid var(--stroke);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+      max-width: min(520px, calc(100vw - 24px));
+      text-align: center;
+      z-index: 9999;
+    }
+    .toast.show{
+      opacity: 1;
+      transform: translateX(-50%) translateY(-6px);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">
+        <b>🔥 Огонёк</b>
+        <span id="subTitle">Рост долгий, награды каждые 10 уровней</span>
+      </div>
+      <div class="pill" id="tgInfo">Открыто в браузере</div>
+    </div>
+
+    <div class="panel">
+      <div class="meters">
+        <div class="meterRow">
+          <div class="meterTop">
+            <span>Опыт</span>
+            <span id="xpText">0 / 100</span>
+          </div>
+          <div class="meter"><div class="bar" id="xpBar"></div></div>
+        </div>
+
+        <div class="meterRow">
+          <div class="meterTop">
+            <span>Энергия (для действий)</span>
+            <span id="energyText">20 / 20</span>
+          </div>
+          <div class="meter"><div class="barEnergy" id="energyBar"></div></div>
+        </div>
+
+        <div class="meterRow">
+          <div class="meterTop">
+            <span>Настроение (регенится)</span>
+            <span id="moodTextTop">😄 100%</span>
+          </div>
+          <div class="meter"><div class="barMood" id="moodBar"></div></div>
+        </div>
+      </div>
+
+      <div class="fireZone">
+        <div class="fire" id="fire" title="Тап — +XP (тратит энергию)"></div>
+      </div>
+      <div class="tapHint" id="tapHint"></div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="k">Уровень</div>
+          <div class="v" id="lvlText">1</div>
+        </div>
+        <div class="stat">
+          <div class="k">Искры (награды)</div>
+          <div class="v" id="sparksText">0 ✨</div>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="feedBtn">Кормить</button>
+        <button id="petBtn" class="secondary">Погладить</button>
+        <button id="playBtn" class="secondary">Поиграть</button>
+      </div>
+
+      <div class="bottom">
+        <button id="saveBtn" class="secondary">Сохранить</button>
+        <button id="resetBtn" class="danger">Сброс</button>
+      </div>
+
+      <div class="note">
+        Ограничения: энергия + кулдауны + растущая цена уровня. Награды каждые 10 уровней дают Искры ✨.
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Telegram init
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    // --- Баланс / прогрессия ---
+    const TAP_COOLDOWN_MS = 900;      // кулдаун на тап
+    const ACTION_COOLDOWN_MS = 4500;  // кулдаун на кнопки действий
+    const MAX_ENERGY = 20;
+    const ENERGY_REGEN_MS = 45000;    // +1 энергия каждые 45 сек (медленнее)
+    const MOOD_REGEN_MS = 25000;      // +1 настроение каждые 25 сек (реген)
+    const MOOD_DECAY_MS = 90000;      // -1 настроение каждые 90 сек (медленнее чем раньше)
+
+    // XP и стоимость энергии (и тап, и действия)
+    const TAP_XP_BASE = 3;
+    const TAP_ENERGY_COST = 1;
+
+    const ACTIONS = {
+      feed: { xpBase: 14, energyCost: 3, moodBonus: 2 },
+      pet:  { xpBase: 8,  energyCost: 2, moodBonus: 3 },
+      play: { xpBase: 10, energyCost: 3, moodBonus: 1 },
+    };
+
+    // Награды
+    const REWARD_EVERY_LEVELS = 10; // каждые 10 уровней
+    function sparksRewardForLevel(lvl){
+      // растёт медленно, но ощутимо
+      // за 10,20,30... уровни
+      return 10 + Math.floor(lvl / 10) * 5;
+    }
+
+    // Скин/цвет огонька по уровню
+    function hueForLevel(lvl){
+      // мягкое изменение оттенка: каждые 5 уровней +8 градусов
+      return ((Math.floor(lvl / 5) * 8) % 360);
+    }
+
+    // XP требование: растёт быстрее, чтобы было “долго”
+    function nextXpNeed(prevNeed, lvl){
+      // чем выше уровень — тем сильнее множитель
+      const k = 1.20 + Math.min(0.25, lvl * 0.002); // от 1.20 до 1.45
+      return Math.round(prevNeed * k + 12);
+    }
+
+    // Дiminishing returns: XP действий слегка уменьшается на высоких уровнях
+    function xpScaleByLevel(lvl){
+      // после 30 уровня начинаем чуть резать XP
+      if (lvl <= 30) return 1;
+      const t = Math.min(0.35, (lvl - 30) * 0.006); // максимум -35%
+      return 1 - t;
+    }
+
+    // --- State ---
+    const STORAGE_KEY = "ogonek_state_v3";
+    const defaultState = {
+      lvl: 1,
+      xp: 0,
+      xpNeed: 100,
+      mood: 100,
+      energy: MAX_ENERGY,
+
+      sparks: 0,
+      lastRewardLevel: 0,
+
+      lastEnergyAt: Date.now(),
+      lastMoodTickAt: Date.now(),
+      lastMoodRegenAt: Date.now(),
+
+      lastTapAt: 0,
+      lastActionAt: 0,
+
+      lastSaveAt: Date.now()
+    };
+
+    let state = loadState();
+    applyEnergyRegen(true);
+    applyMoodTicks(true);
+    grantRewardsIfNeeded(); // если вдруг уже был уровень кратный 10
+    render();
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { ...defaultState };
+        const s = JSON.parse(raw);
+        return {
+          ...defaultState,
+          ...s,
+          energy: clampInt(s.energy ?? MAX_ENERGY, 0, MAX_ENERGY),
+          mood: clampInt(s.mood ?? 100, 0, 100),
+          sparks: clampInt(s.sparks ?? 0, 0, 1e9),
+          lastRewardLevel: clampInt(s.lastRewardLevel ?? 0, 0, 1e9),
+        };
+      } catch {
+        return { ...defaultState };
+      }
+    }
+
+    function saveState() {
+      applyEnergyRegen(false);
+      applyMoodTicks(false);
+      state.lastSaveAt = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      tg?.HapticFeedback?.notificationOccurred("success");
+      toast("Сохранено ✅");
+    }
+
+    function resetState() {
+      localStorage.removeItem(STORAGE_KEY);
+      state = { ...defaultState };
+      render();
+      tg?.HapticFeedback?.notificationOccurred("warning");
+      toast("Сброшено");
+    }
+
+    // --- Time systems ---
+    function applyEnergyRegen(forceRender=false) {
+      const now = Date.now();
+      if (state.energy >= MAX_ENERGY) {
+        state.lastEnergyAt = now;
+        if (forceRender) render();
+        return;
+      }
+      const elapsed = now - (state.lastEnergyAt || now);
+      const gained = Math.floor(elapsed / ENERGY_REGEN_MS);
+      if (gained > 0) {
+        state.energy = Math.min(MAX_ENERGY, state.energy + gained);
+        state.lastEnergyAt += gained * ENERGY_REGEN_MS;
+        if (forceRender) render();
+      }
+    }
+
+    function applyMoodTicks(forceRender=false){
+      const now = Date.now();
+
+      // decay
+      const dElapsed = now - (state.lastMoodTickAt || now);
+      const d = Math.floor(dElapsed / MOOD_DECAY_MS);
+      if (d > 0){
+        state.mood = clampInt(state.mood - d, 0, 100);
+        state.lastMoodTickAt += d * MOOD_DECAY_MS;
+      }
+
+      // regen
+      const rElapsed = now - (state.lastMoodRegenAt || now);
+      const r = Math.floor(rElapsed / MOOD_REGEN_MS);
+      if (r > 0){
+        state.mood = clampInt(state.mood + r, 0, 100);
+        state.lastMoodRegenAt += r * MOOD_REGEN_MS;
+      }
+
+      if (forceRender) render();
+    }
+
+    // --- XP/level ---
+    function addXP(rawAmount) {
+      const scaled = Math.max(1, Math.floor(rawAmount * xpScaleByLevel(state.lvl)));
+      state.xp += scaled;
+
+      while (state.xp >= state.xpNeed) {
+        state.xp -= state.xpNeed;
+        state.lvl += 1;
+        state.xpNeed = nextXpNeed(state.xpNeed, state.lvl);
+
+        // небольшой бонус настроения за уровень
+        state.mood = clampInt(state.mood + 6, 0, 100);
+
+        tg?.HapticFeedback?.impactOccurred("medium");
+        toast(`Уровень ↑ ${state.lvl} 🔥`);
+        grantRewardsIfNeeded(); // награды каждые 10 уровней
+      }
+      render();
+    }
+
+    function grantRewardsIfNeeded(){
+      // выдаём награды за каждый 10-й уровень (если перескочили сразу несколько — тоже выдаст)
+      while (state.lastRewardLevel + REWARD_EVERY_LEVELS <= state.lvl){
+        const rewardLevel = state.lastRewardLevel + REWARD_EVERY_LEVELS;
+        const reward = sparksRewardForLevel(rewardLevel);
+        state.sparks += reward;
+        state.lastRewardLevel = rewardLevel;
+        toast(`🎁 Награда за ${rewardLevel} уровень: +${reward} ✨`);
+        tg?.HapticFeedback?.notificationOccurred("success");
+      }
+    }
+
+    // --- Ограниченный тап ---
+    function tryTapFire() {
+      applyEnergyRegen(false);
+      applyMoodTicks(false);
+
+      const now = Date.now();
+      const cdLeft = (state.lastTapAt + TAP_COOLDOWN_MS) - now;
+      if (cdLeft > 0) return flashHint(`Подожди ${(cdLeft/1000).toFixed(1)}с`);
+
+      if (state.energy < TAP_ENERGY_COST) {
+        tg?.HapticFeedback?.notificationOccurred("error");
+        return flashHint("Нет энергии 😴");
+      }
+
+      state.lastTapAt = now;
+      state.energy -= TAP_ENERGY_COST;
+
+      // тап слегка утомляет, но реген есть
+      state.mood = clampInt(state.mood - 1, 0, 100);
+
+      // XP тапа чуть растёт от уровня, но очень медленно (чтобы не спидранить)
+      const tapXP = TAP_XP_BASE + Math.floor(state.lvl / 20);
+      addXP(tapXP);
+
+      const fire = document.getElementById("fire");
+      fire.style.transform = `scale(${currentFireScale() * 1.04})`;
+      setTimeout(() => fire.style.transform = `scale(${currentFireScale()})`, 120);
+
+      tg?.HapticFeedback?.impactOccurred("light");
+      flashHint(`+${tapXP} XP (энергия -${TAP_ENERGY_COST})`);
+      render();
+    }
+
+    // --- Actions (кнопки) ---
+    function canDoAction(){
+      const now = Date.now();
+      const cdLeft = (state.lastActionAt + ACTION_COOLDOWN_MS) - now;
+      if (cdLeft > 0){
+        flashHint(`Действие на кулдауне ${(cdLeft/1000).toFixed(1)}с`);
+        return false;
+      }
+      return true;
+    }
+
+    function doAction(kind){
+      applyEnergyRegen(false);
+      applyMoodTicks(false);
+
+      if (!canDoAction()) return;
+
+      const cfg = ACTIONS[kind];
+      if (!cfg) return;
+
+      if (state.energy < cfg.energyCost){
+        tg?.HapticFeedback?.notificationOccurred("error");
+        return flashHint("Не хватает энергии 😴");
+      }
+
+      state.lastActionAt = Date.now();
+      state.energy -= cfg.energyCost;
+
+      // действие улучшает настроение чуть-чуть
+      state.mood = clampInt(state.mood + cfg.moodBonus, 0, 100);
+
+      // XP действий с уровнем слегка масштабируется, но упирается в ограничения энергии/кулдауна/стоимости уровней
+      const xp = cfg.xpBase + Math.floor(state.lvl / 25);
+      addXP(xp);
+
+      tg?.HapticFeedback?.impactOccurred("medium");
+      flashHint(`+${xp} XP (энергия -${cfg.energyCost})`);
+      render();
+    }
+
+    // --- UI helpers ---
+    function moodEmoji(m) {
+      if (m >= 80) return "😄";
+      if (m >= 50) return "🙂";
+      if (m >= 25) return "😕";
+      return "🥶";
+    }
+
+    function clampInt(v, a, b) {
+      v = Number.isFinite(v) ? Math.floor(v) : a;
+      return Math.max(a, Math.min(b, v));
+    }
+
+    let hintTimer = null;
+    function flashHint(text) {
+      const el = document.getElementById("tapHint");
+      el.textContent = text;
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(() => el.textContent = " ", 1100);
+    }
+
+    let toastTimer = null;
+    function toast(text){
+      const t = document.getElementById("toast");
+      t.textContent = text;
+      t.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove("show"), 1700);
+    }
+
+    function currentFireScale(){
+      const xpPct = (state.xp / state.xpNeed) * 100;
+      const scale = 0.92 + (state.lvl * 0.018) + (xpPct / 100) * 0.08;
+      return Math.min(scale, 1.75);
+    }
+
+    function render() {
+      applyEnergyRegen(false);
+      applyMoodTicks(false);
+
+      const xpPct = Math.max(0, Math.min(100, (state.xp / state.xpNeed) * 100));
+      document.getElementById("xpBar").style.width = xpPct.toFixed(1) + "%";
+      document.getElementById("xpText").textContent = `${state.xp} / ${state.xpNeed}`;
+
+      const ePct = (state.energy / MAX_ENERGY) * 100;
+      document.getElementById("energyBar").style.width = ePct.toFixed(1) + "%";
+      document.getElementById("energyText").textContent = `${state.energy} / ${MAX_ENERGY}`;
+
+      const mPct = state.mood;
+      document.getElementById("moodBar").style.width = mPct.toFixed(0) + "%";
+      document.getElementById("moodTextTop").textContent = `${moodEmoji(state.mood)} ${state.mood}%`;
+
+      document.getElementById("lvlText").textContent = `${state.lvl}`;
+      document.getElementById("sparksText").textContent = `${state.sparks} ✨`;
+
+      const fire = document.getElementById("fire");
+      fire.classList.toggle("locked", state.energy <= 0);
+
+      // скин по уровню (чуть меняем цвет)
+      const hue = hueForLevel(state.lvl);
+      fire.style.filter = `hue-rotate(${hue}deg) drop-shadow(0 0 22px rgba(255,120,40,.35))`;
+
+      fire.style.transform = `scale(${currentFireScale()})`;
+
+      // TG info
+      const tgInfo = document.getElementById("tgInfo");
+      if (tg?.initDataUnsafe?.user) {
+        const u = tg.initDataUnsafe.user;
+        tgInfo.textContent = `Telegram: ${u.first_name || "User"} • id ${u.id}`;
+      } else {
+        tgInfo.textContent = "Открыто в браузере";
+      }
+
+      // disable buttons if low energy
+      const now = Date.now();
+      const actionCd = (state.lastActionAt + ACTION_COOLDOWN_MS) - now;
+      const actionOnCd = actionCd > 0;
+
+      document.getElementById("feedBtn").disabled = actionOnCd || state.energy < ACTIONS.feed.energyCost;
+      document.getElementById("petBtn").disabled  = actionOnCd || state.energy < ACTIONS.pet.energyCost;
+      document.getElementById("playBtn").disabled = actionOnCd || state.energy < ACTIONS.play.energyCost;
+    }
+
+    // events
+    document.getElementById("fire").addEventListener("click", tryTapFire);
+    document.getElementById("feedBtn").addEventListener("click", () => doAction("feed"));
+    document.getElementById("petBtn").addEventListener("click", () => doAction("pet"));
+    document.getElementById("playBtn").addEventListener("click", () => doAction("play"));
+    document.getElementById("saveBtn").addEventListener("click", saveState);
+    document.getElementById("resetBtn").addEventListener("click", resetState);
+
+    // UI refresh loop
+    setInterval(() => render(), 1000);
+  </script>
+</body>
+</html>
