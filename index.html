@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Огонёк</title>
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root { font-family: system-ui, Arial, sans-serif; }
+    body { margin: 0; padding: 16px; background: #0b0f14; color: #e8eef6; }
+    .card { max-width: 560px; margin: 0 auto; background: #121a24; border: 1px solid #1f2a3a; border-radius: 16px; padding: 16px; }
+    h1 { margin: 0 0 12px; font-size: 22px; }
+    .row { display:flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    button {
+      background: #2a78ff; color: white; border: 0; border-radius: 12px;
+      padding: 12px 14px; font-size: 14px; cursor: pointer; flex: 1 1 150px;
+    }
+    button.secondary { background: #223044; }
+    button.danger { background: #e5484d; }
+    .meter { height: 14px; background: #0b0f14; border: 1px solid #1f2a3a; border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ffb800, #ff5d2a, #ff2a6d); }
+    .stats { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .stat { background:#0b0f14; border:1px solid #1f2a3a; border-radius: 14px; padding: 10px; }
+    .label { opacity: .75; font-size: 12px; }
+    .value { font-size: 18px; margin-top: 4px; }
+    .fire-wrap { display:flex; justify-content:center; align-items:center; margin: 16px 0; }
+    .fire {
+      width: 140px; height: 140px; border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      background: radial-gradient(circle at 50% 35%, rgba(255,232,120,.9), rgba(255,120,40,.55) 40%, rgba(255,40,90,.25) 70%, rgba(0,0,0,0) 72%);
+      filter: drop-shadow(0 0 20px rgba(255,120,40,.35));
+      transform: scale(1);
+      transition: transform .2s ease;
+      position: relative;
+    }
+    .fire::after{
+      content:"";
+      position:absolute;
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.8), rgba(255,232,120,.55) 45%, rgba(255,120,40,.25) 70%, rgba(0,0,0,0) 74%);
+      transform: translateY(10px);
+      opacity:.85;
+    }
+    .lvl { text-align:center; margin-top: 6px; opacity:.9; }
+    .hint { opacity:.75; font-size: 12px; margin-top: 10px; line-height: 1.35; }
+    .small { font-size: 12px; opacity:.7; margin-top: 10px; }
+    a { color: #9ec2ff; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>🔥 Огонёк</h1>
+
+    <div class="meter" aria-label="прогресс">
+      <div class="bar" id="bar"></div>
+    </div>
+
+    <div class="fire-wrap">
+      <div class="fire" id="fire" title="Тапни по огоньку"></div>
+    </div>
+
+    <div class="lvl" id="lvlText">Уровень: 1</div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="label">Опыт</div>
+        <div class="value" id="xpText">0 / 100</div>
+      </div>
+      <div class="stat">
+        <div class="label">Настроение</div>
+        <div class="value" id="moodText">🙂 100%</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="feedBtn">Кормить (+15)</button>
+      <button id="petBtn" class="secondary">Погладить (+7)</button>
+      <button id="playBtn" class="secondary">Поиграть (+10)</button>
+    </div>
+
+    <div class="row">
+      <button id="saveBtn" class="secondary">Сохранить</button>
+      <button id="resetBtn" class="danger">Сброс</button>
+    </div>
+
+    <div class="hint">
+      Прогресс хранится локально в браузере. Потом можно подключить сервер и сохранять в БД по Telegram user id.
+    </div>
+    <div class="small" id="tgInfo"></div>
+  </div>
+
+  <script>
+    // --- Telegram init ---
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      // Можно подстроить цвет темы
+      document.body.style.background = tg.themeParams?.bg_color || "#0b0f14";
+    }
+
+    // --- Game state ---
+    const STORAGE_KEY = "ogonek_state_v1";
+
+    const defaultState = {
+      lvl: 1,
+      xp: 0,
+      xpNeed: 100,
+      mood: 100,
+      lastTick: Date.now()
+    };
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { ...defaultState };
+        const s = JSON.parse(raw);
+        return { ...defaultState, ...s };
+      } catch {
+        return { ...defaultState };
+      }
+    }
+
+    function saveState() {
+      state.lastTick = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (tg) tg.HapticFeedback?.notificationOccurred("success");
+    }
+
+    function resetState() {
+      localStorage.removeItem(STORAGE_KEY);
+      state = { ...defaultState };
+      render();
+      if (tg) tg.HapticFeedback?.notificationOccurred("warning");
+    }
+
+    let state = loadState();
+
+    // --- Mechanics ---
+    function addXP(amount) {
+      // настроение слегка падает со временем — простая механика
+      state.mood = Math.max(0, Math.min(100, state.mood - 1));
+
+      state.xp += amount;
+      while (state.xp >= state.xpNeed) {
+        state.xp -= state.xpNeed;
+        state.lvl += 1;
+        state.xpNeed = Math.round(state.xpNeed * 1.18);
+        // бонус за уровень
+        state.mood = Math.min(100, state.mood + 10);
+        if (tg) tg.HapticFeedback?.impactOccurred("medium");
+      }
+      render();
+    }
+
+    function moodEmoji(m) {
+      if (m >= 80) return "😄";
+      if (m >= 50) return "🙂";
+      if (m >= 25) return "😕";
+      return "🥶";
+    }
+
+    function render() {
+      const pct = Math.max(0, Math.min(100, (state.xp / state.xpNeed) * 100));
+      document.getElementById("bar").style.width = pct.toFixed(1) + "%";
+      document.getElementById("lvlText").textContent = `Уровень: ${state.lvl}`;
+      document.getElementById("xpText").textContent = `${state.xp} / ${state.xpNeed}`;
+      document.getElementById("moodText").textContent = `${moodEmoji(state.mood)} ${state.mood}%`;
+
+      // размер огонька зависит от уровня и прогресса
+      const scale = 0.95 + (state.lvl * 0.03) + (pct / 100) * 0.08;
+      const fire = document.getElementById("fire");
+      fire.style.transform = `scale(${Math.min(scale, 1.6)})`;
+
+      // показываем, кто открыл (если из Telegram)
+      const info = document.getElementById("tgInfo");
+      if (tg?.initDataUnsafe?.user) {
+        const u = tg.initDataUnsafe.user;
+        info.innerHTML = `Открыто из Telegram: <b>${u.first_name || ""}</b> (id ${u.id})`;
+      } else {
+        info.innerHTML = `Открыто вне Telegram (просто браузер).`;
+      }
+    }
+
+    // --- UI events ---
+    document.getElementById("feedBtn").addEventListener("click", () => addXP(15));
+    document.getElementById("petBtn").addEventListener("click", () => addXP(7));
+    document.getElementById("playBtn").addEventListener("click", () => addXP(10));
+    document.getElementById("saveBtn").addEventListener("click", saveState);
+    document.getElementById("resetBtn").addEventListener("click", resetState);
+
+    document.getElementById("fire").addEventListener("click", () => {
+      addXP(5);
+      if (tg) tg.HapticFeedback?.impactOccurred("light");
+    });
+
+    // Автодеградация настроения (каждые 60 секунд минус 1)
+    setInterval(() => {
+      state.mood = Math.max(0, state.mood - 1);
+      render();
+    }, 60000);
+
+    render();
+  </script>
+</body>
+</html>
